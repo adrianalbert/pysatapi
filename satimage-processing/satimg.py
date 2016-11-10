@@ -64,16 +64,17 @@ class SatImage(object):
 			loc = tuple(geocoder.google(loc).latlng)
 		if len(loc) == 0:
 			return None
-		else:
-			wLat, wLon = km_to_deg_at_location(loc, (w,w))
-			img = [img for bounds, img in self._raster.iteritems() \
-				if (loc[0]>=bounds[0] and loc[0]<bounds[2]) and \
-					(loc[1]>=bounds[1] and loc[1]<bounds[3])]
-			if len(img)>0:
-				# note that all the GDAL-based code assumes locations are given as (lon,lat), so we must reverse loc
-				return extract_centered_image_geo(img[0], loc[::-1], (wLat, wLon))
-			else:
-				return None
+
+		img = [img for bounds, img in self._raster.iteritems() \
+			if (loc[0]>=bounds[0] and loc[0]<bounds[2]) and \
+				(loc[1]>=bounds[1] and loc[1]<bounds[3])]
+		if len(img) == 0:
+			return None
+
+		w = 0 if w is None else w
+		wLat, wLon = km_to_deg_at_location(loc, (w,w))
+		# note that all the GDAL-based code assumes locations are given as (lon,lat), so we must reverse loc
+		return extract_centered_image_lonlat(img[0], loc[::-1], (wLat, wLon))
 
 
 	def get_image_at_locations(self, locs, w=None, savePath=None):
@@ -212,12 +213,15 @@ def bounding_box_at_location(loc, sizeKm):
 	return (rad2deg(latMin), rad2deg(lonMin), rad2deg(latMax), rad2deg(lonMax))
 
 
-def extract_centered_image_geo(raster, geoLoc, geoSize):
-	geoWidth, geoHeight = geoSize
+def extract_centered_image_lonlat(raster, lonlat, geoSize):
 	gt = raster.GetGeoTransform()
-	pixCenter = geoLoc_to_pixLoc(geoLoc, gt)
-	pixWidth, pixHeight = geoSize_to_pixSize(geoSize, gt)
-	return extract_centered_image_pix(raster, pixCenter, (pixWidth, pixHeight))
+	pixCenter = geoLoc_to_pixLoc(lonlat, gt)
+	geoWidth, geoHeight = geoSize
+	if geoWidth==0 or geoHeight==0 or geoWidth is None or geoHeight is None:
+		return extract_centered_image_pix(raster, pixCenter, (1,1))[0][0][0]
+	else:
+		pixWidth, pixHeight = geoSize_to_pixSize(geoSize, gt)
+		return extract_centered_image_pix(raster, pixCenter, (pixWidth, pixHeight))
 
 
 def extract_centered_image_pix(raster, pixLoc, pixSize):
@@ -252,8 +256,7 @@ def extract_image_pix(raster, pixLoc, pixSize):
 	bands = map(raster.GetRasterBand, xrange(1, raster.RasterCount + 1))
 	img = [b.ReadAsArray(iLeft, iTop, iWidth, iHeight).astype(np.float) \
 		for b in bands]
-
-	return img
+	return np.asarray(img)
 
 
 def convert_geoWindow_to_pixelWindow(geoWindow, gt):
