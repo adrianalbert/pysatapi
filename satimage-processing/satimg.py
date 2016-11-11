@@ -1,5 +1,5 @@
 # for local I/O
-import sys
+import sys, os
 
 # for handling geometry and AOIs
 from shapely.geometry import Polygon, Point
@@ -16,7 +16,7 @@ from gdal import gdalconst
 from gdalconst import * 
 
 # for processing image data
-from PIL import Image
+import skimage
 import cv2
 
 # the data will be exported as numpy arrays
@@ -53,7 +53,7 @@ class SatImage(object):
 			self._raster[get_geotiff_bounds(data)] = data
 
 
-	def get_image_at_location(self, loc, w=None, fileName=None):
+	def get_image_at_location(self, loc, w=None, dumpPath=None, pickle=False):
 		"""
 		Crop raster at location loc (lat,lon) with size w x w (in meters). Return a data matrix or save to file. 
 		If w is not set, return just the pixel values at <loc>. 
@@ -74,34 +74,46 @@ class SatImage(object):
 		w = 0 if w is None else w
 		wLat, wLon = km_to_deg_at_location(loc, (w,w))
 		# note that all the GDAL-based code assumes locations are given as (lon,lat), so we must reverse loc
-		return extract_centered_image_lonlat(img[0], loc[::-1], (wLat, wLon))
+		img = extract_centered_image_lonlat(img[0], loc[::-1], (wLat, wLon))
+
+		if dumpPath is None:
+			return img	
+		else:
+			dumpPath += "/%2.6f_%2.6f_%dkm"%(loc[0], loc[1], w)
+			save_image_data(img, dumpPath, pickle=False)
 
 
-	def get_image_at_locations(self, locs, w=None, savePath=None):
+	def get_image_at_locations(self,locs,w=None,dumpPath=None,pickle=False):
 		""" Obtain sample images at different locations.
 		"""
 		if type(locs) == tuple:
-			return self.get_image_at_location(locs, w=w)
+			return self.get_image_at_location(locs, w=w, \
+				dumpPath=dumpPath, pickle=pickle)
 		else:
-			return {loc:self.get_image_at_location(loc, w=w) for loc in locs}
+			return {loc:self.get_image_at_location(loc, w=w, \
+				dumpPath=dumpPath, pickle=pickle) for loc in locs}
 
 
-	def sample_images_around_location(self, loc, w=None, W=None, nSamples=1):
+	def sample_images_around_location(self, loc, w=None, W=None, nSamples=1,\
+		dumpPath=None, pickle=False):
 		""" 
 		Sample nSamples images of size w x w within a bounding box of W x W around location loc. Returns the list of sampled locations.
 		"""
 		boundingBox = bounding_box_at_location(loc, (W,W))
 		locs = generate_locations_within_bounding_box(boundingBox, nSamples)
-		return self.get_image_at_locations(locs, w=w)
+		return self.get_image_at_locations(locs, w=w, \
+			dumpPath=dumpPath, pickle=pickle)
 
 	
-	def sample_images_within_shape(self, shape, w=None, nSamples=1):
+	def sample_images_within_shape(self, shape, w=None, nSamples=1, \
+		dumpPath=None, pickle=False):
 		""" 
 		Generate nSamples candidate (lat,lon) locations to sample images at. 
 		"""
 		locs = generate_locations_within_polygon(polygon, nSamples=1)
-		return self.get_image_at_locations(locs, w=w)
-	
+		return self.get_image_at_locations(locs, w=w, \
+			dumpPath=dumpPath, pickle=pickle)
+
 
 def generate_locations_within_bounding_box(bbox, nSamples=1):
 	minX, minY, maxX, maxY = bbox
@@ -163,6 +175,23 @@ def get_geotiff_bounds(raster):
 	return latlongMin[1], latlongMin[0], latlongMax[1], latlongMax[0]
 
 
+def save_image_data(img, dumpPath, pickle=False):
+	basedir = os.path.dirname(dumpPath)
+	img = skimage.exposure.rescale_intensity(img, out_range='float')
+	img = skimage.img_as_uint(img)
+	if not os.path.exists(basedir):
+		os.makedirs(basedir)
+	if pickle:
+		with gzip.open(dumpPath+".pickle.gz", 'w'):
+			pickle.dump(img, dumpPath)
+	elif img.shape[0] in [3,4]:
+		skimage.io.imsave(dumpPath+".jpg", img.reshape(img.shape[::-1]))
+	elif img.shape[0] == 1:
+		skimage.io.imsave(dumpPath+".png", np.squeeze(img))
+	else:
+		skimage.io.imsave(dumpPath+".tif", img, compress=6)
+
+
 def km_to_deg_at_location(loc, sizeKm):
 	latMin, lonMin, latMax, lonMax = bounding_box_at_location(loc, sizeKm)
 	return latMax - latMin, lonMax - lonMin
@@ -218,7 +247,7 @@ def extract_centered_image_lonlat(raster, lonlat, geoSize):
 	pixCenter = geoLoc_to_pixLoc(lonlat, gt)
 	geoWidth, geoHeight = geoSize
 	if geoWidth==0 or geoHeight==0 or geoWidth is None or geoHeight is None:
-		return extract_centered_image_pix(raster, pixCenter, (1,1))[0][0][0]
+		return extract_centered_image_pix(raster, pixCenter, (1,1))[:,0,0]
 	else:
 		pixWidth, pixHeight = geoSize_to_pixSize(geoSize, gt)
 		return extract_centered_image_pix(raster, pixCenter, (pixWidth, pixHeight))

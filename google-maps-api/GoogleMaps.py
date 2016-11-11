@@ -4,12 +4,14 @@ import urllib
 import cStringIO 
 from PIL import Image
 
+import numpy as np
+
 class GoogleMaps(object):
     """ Lightweight wrapper class for the Google Maps API.
     """
     def __init__(self, key=None):
         self._key = key
-        return self
+
 
     def construct_static_url(self, center=None, zoom=None, imgsize=(500,500),
                             maptype="roadmap", imgformat="jpeg"):
