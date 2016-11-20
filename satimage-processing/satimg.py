@@ -17,6 +17,7 @@ from gdalconst import *
 
 # for processing image data
 import skimage
+from skimage import exposure, io
 import cv2
 
 # the data will be exported as numpy arrays
@@ -53,6 +54,10 @@ class SatImage(object):
 			self._raster[get_geotiff_bounds(data)] = data
 
 
+	def get_value_at_location(self, loc):
+		return self.get_image_at_location(loc)
+
+
 	def get_image_at_location(self, loc, w=None, dumpPath=None, pickle=False):
 		"""
 		Crop raster at location loc (lat,lon) with size w x w (in meters). Return a data matrix or save to file. 
@@ -79,8 +84,9 @@ class SatImage(object):
 		if dumpPath is None:
 			return img	
 		else:
-			dumpPath += "/%2.6f_%2.6f_%dkm"%(loc[0], loc[1], w)
+			dumpPath += "%2.6f_%2.6f_%dkm"%(loc[0], loc[1], w)
 			save_image_data(img, dumpPath, pickle=False)
+			return loc
 
 
 	def get_image_at_locations(self,locs,w=None,dumpPath=None,pickle=False):
@@ -99,8 +105,7 @@ class SatImage(object):
 		""" 
 		Sample nSamples images of size w x w within a bounding box of W x W around location loc. Returns the list of sampled locations.
 		"""
-		boundingBox = bounding_box_at_location(loc, (W,W))
-		locs = generate_locations_within_bounding_box(boundingBox, nSamples)
+		locs = generate_locations_around_location(loc, W=W, nSamples=nSamples)
 		return self.get_image_at_locations(locs, w=w, \
 			dumpPath=dumpPath, pickle=pickle)
 
@@ -115,21 +120,28 @@ class SatImage(object):
 			dumpPath=dumpPath, pickle=pickle)
 
 
-def generate_locations_within_bounding_box(bbox, nSamples=1):
+def generate_locations_around_latlon(latlon, W=None, nSamples=1):
+	boundingBox = bounding_box_at_location(latlon, (W,W))
+	locs = generate_locations_within_bounding_box(boundingBox, nSamples)
+	return locs
+
+
+def generate_locations_within_bounding_box(bbox, nSamples=1, seed=None):
+	np.random.seed(seed)
 	minX, minY, maxX, maxY = bbox
 	x = np.random.uniform(minX, maxX, nSamples)
 	y = np.random.uniform(minY, maxY, nSamples)
 	return zip(x,y)
 
 
-def generate_locations_within_polygon(polygon, nSamples=1):
+def generate_locations_within_polygon(polygon, nSamples=1, seed=None):
 	"""
 	There doesn't seem to be an efficient way to do this sampling for an arbitrary polygon. We use a rejection sampling method instead.
 	"""
 	bbox = polygon.bounds
 	points = []
 	while len(points) < nSamples:
-		ps = generate_locations_within_bounding_box(bbox, nSamples=nSamples)
+		ps = generate_locations_within_bounding_box(bbox, nSamples=nSamples, seed=seed)
 		ps = [p for p in ps if Point(p).within(polygon)]
 		points += ps
 	return points[:nSamples]
@@ -177,7 +189,7 @@ def get_geotiff_bounds(raster):
 
 def save_image_data(img, dumpPath, pickle=False):
 	basedir = os.path.dirname(dumpPath)
-	img = skimage.exposure.rescale_intensity(img, out_range='float')
+	img = exposure.rescale_intensity(img, out_range='float')
 	img = skimage.img_as_uint(img)
 	if not os.path.exists(basedir):
 		os.makedirs(basedir)
@@ -185,11 +197,11 @@ def save_image_data(img, dumpPath, pickle=False):
 		with gzip.open(dumpPath+".pickle.gz", 'w'):
 			pickle.dump(img, dumpPath)
 	elif img.shape[0] in [3,4]:
-		skimage.io.imsave(dumpPath+".jpg", img.reshape(img.shape[::-1]))
+		io.imsave(dumpPath+".jpg", img.reshape(img.shape[::-1]))
 	elif img.shape[0] == 1:
-		skimage.io.imsave(dumpPath+".png", np.squeeze(img))
+		io.imsave(dumpPath+".png", np.squeeze(img))
 	else:
-		skimage.io.imsave(dumpPath+".tif", img, compress=6)
+		io.imsave(dumpPath+".tif", img, compress=6)
 
 
 def km_to_deg_at_location(loc, sizeKm):
