@@ -3,6 +3,8 @@ import httplib
 import urllib
 import cStringIO 
 from PIL import Image
+from skimage import io
+
 
 import numpy as np
 
@@ -11,7 +13,6 @@ class GoogleMaps(object):
     """
     def __init__(self, key=None):
         self._key = key
-
 
     def construct_static_url(self, center=None, zoom=None, imgsize=(500,500),
                             maptype="roadmap", imgformat="jpeg"):
@@ -43,16 +44,20 @@ def construct_googlemaps_url_request(center=None, zoom=None, imgsize=(500,500),
 
 
 def get_static_google_map(request, filename=None):  
-    if filename is not None:
-        urllib.urlretrieve(request, filename) 
-        return filename
+    web_sock = urllib.urlopen(request)
+    imgdata = cStringIO.StringIO(web_sock.read()) # constructs a StringIO holding the image
+    try:
+        img = Image.open(imgdata)
+    except IOError:
+        print "IOError:", imgdata.read() # print error (or it may return a image showing the error"
+        return None
     else:
-        web_sock = urllib.urlopen(request)
-        imgdata = cStringIO.StringIO(web_sock.read()) # constructs a StringIO holding the image
-        try:
-            img = Image.open(imgdata)
-        except IOError:
-            print "IOError:", imgdata.read() # print error (or it may return a image showing the error"
-            return None
-        else:
-            return np.asarray(img.convert("RGB"))
+        img = np.asarray(img.convert("RGB"))
+    
+    if filename is not None:
+        basedir = os.path.dirname(filename)
+        if not os.path.exists(basedir):
+            os.makedirs(basedir)
+        io.imsave(filename, img)
+    return img 
+ 

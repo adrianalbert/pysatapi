@@ -18,7 +18,6 @@ from gdalconst import *
 # for processing image data
 import skimage
 from skimage import exposure, io
-import cv2
 
 # the data will be exported as numpy arrays
 import numpy as np
@@ -81,12 +80,10 @@ class SatImage(object):
 		# note that all the GDAL-based code assumes locations are given as (lon,lat), so we must reverse loc
 		img = extract_centered_image_lonlat(img[0], loc[::-1], (wLat, wLon))
 
-		if dumpPath is None:
-			return img	
-		else:
+		if dumpPath is not None:
 			dumpPath += "%2.6f_%2.6f_%dkm"%(loc[0], loc[1], w)
 			save_image_data(img, dumpPath, pickle=False)
-			return loc
+		return img
 
 
 	def get_image_at_locations(self,locs,w=None,dumpPath=None,pickle=False):
@@ -134,15 +131,17 @@ def generate_locations_within_bounding_box(bbox, nSamples=1, seed=None):
 	return zip(x,y)
 
 
-def generate_locations_within_polygon(polygon, nSamples=1, seed=None):
+def generate_locations_within_polygon(polygon, nSamples=1, seed=None, \
+	strict=True):
 	"""
 	There doesn't seem to be an efficient way to do this sampling for an arbitrary polygon. We use a rejection sampling method instead.
 	"""
 	bbox = polygon.bounds
+	shape = polygon if strict else polygon.convex_hull
 	points = []
 	while len(points) < nSamples:
 		ps = generate_locations_within_bounding_box(bbox, nSamples=nSamples, seed=seed)
-		ps = [p for p in ps if Point(p).within(polygon)]
+		ps = [p for p in ps if Point(p).within(shape)]
 		points += ps
 	return points[:nSamples]
 
