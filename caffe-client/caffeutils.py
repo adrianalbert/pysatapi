@@ -36,6 +36,15 @@ def make_imagenet_data_transformer(data_shape):
 	return transformer
 
 
+def eval_net(network_file, weights_file, test_iters=10):
+    test_net = caffe.Net(network_file, weights_file, caffe.TEST)
+    accuracy = 0
+    for it in xrange(test_iters):
+        accuracy += test_net.forward()['acc']
+    accuracy /= test_iters
+    return test_net, accuracy
+
+
 def extract_features(net, imgPaths, \
 	batchSize=128, imgSize=(400,400,3), \
 	feature_layer="conv7", prob_layer="probs"):
@@ -202,8 +211,6 @@ def save_images_to_lmdb(sources, savepath="./", imgSize=(3,500,500)):
 	    # load data for current record
 	    img = caffe.io.load_image(src)
 	    img = transformer.preprocess("data", img)
-	    print img.shape
-	    return
 	    img_dat = caffe.io.array_to_datum(img.astype(np.uint8), label=lab)
 	    write_to_lmdb(image_db, '{:0>10d}'.format(i), img_dat.SerializeToString())
 	    # in_txn.put('{:0>10d}'.format(i), img_dat.SerializeToString())
