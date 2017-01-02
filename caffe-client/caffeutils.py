@@ -211,7 +211,7 @@ def save_images_to_lmdb(sources, savepath="./", imgSize=(3,500,500)):
 	    # load data for current record
 	    img = caffe.io.load_image(src)
 	    img = transformer.preprocess("data", img)
-	    img_dat = caffe.io.array_to_datum(img.astype(np.uint8), label=lab)
+	    img_dat = caffe.io.array_to_datum(img.astype(int).astype(np.uint8), label=lab)
 	    write_to_lmdb(image_db, '{:0>10d}'.format(i), img_dat.SerializeToString())
 	    # in_txn.put('{:0>10d}'.format(i), img_dat.SerializeToString())
 	print "done"
