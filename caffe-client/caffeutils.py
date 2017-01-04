@@ -1,6 +1,7 @@
 # numeric packages
 import numpy as np
 import math
+import scipy as sp
 import random
 
 # filesystem and OS
@@ -9,9 +10,11 @@ import glob
 import tempfile
 import string
 import shutil
+from StringIO import StringIO
 
 # computer vision
 import skimage
+import PIL
 
 # ML
 import sklearn
@@ -20,6 +23,7 @@ from sklearn.base import BaseEstimator
 # Caffe-related
 import caffe
 import lmdb 
+import leveldb
 from caffe.proto import caffe_pb2
 
 def make_imagenet_data_transformer(data_shape):
@@ -159,15 +163,6 @@ def standard_solver_parameters(train_net_path, test_net_path=None):
 	return s
 
 
-def preprocess(img):
-    mean_rgb = np.array([107.4072, 107.8797, 103.334])
-    out = img * 255
-    out = out[:, :, [2,1,0]] # swap channel from RGB to BGR
-    for i in range(2):
-    	out[:,:,i] -= mean_rgb[i]
-    return out.astype(np.uint8)
-
-
 def save_images_to_lmdb(sources, savepath="./", imgSize=(3,500,500)):
 	''' 
 	Create LMDB database from images taken from a list of sources.
@@ -217,11 +212,63 @@ def save_images_to_lmdb(sources, savepath="./", imgSize=(3,500,500)):
 	print "done"
 	image_db.close()
 
+    
+def read_from_lmdb(lmdb_file):
+    cursor = lmdb.open(lmdb_file, readonly=True).begin().cursor()
+    datum = caffe.proto.caffe_pb2.Datum()
+    data = []
+    labels = []
+    for _, value in cursor:
+        datum.ParseFromString(value)
+        data.append(caffe.io.datum_to_array(datum))
+        labels.append(datum.label)
+    return np.array(data), np.array(labels)
 
-# image_datum = caffe.io.array_to_datum( transformed_image, label )
-# write_to_lmdb(image_db, str(itr), image_datum.SerializeToString())
 
+def save_images_to_leveldb(sources, fname, flatten=True, imgSize=(500,500), preprocess=True, normalize=True):
+    if os.path.exists(fname):
+        shutil.rmtree(fname)
+    db = leveldb.LevelDB(fname)
+    step = len(sources) / 10
+    
+    print fname
+    print "Saving %d records (of 100%%):"%len(sources),
+    for i,s in enumerate(sources):
+        src,lab = s if len(s)>1 else (s[0],None)
+        if i % step == 0: print "%d%%"%(i*10/step),
+        x = caffe.io.load_image(src) # x = skimage.io.imread(src).astype(np.uint8) # 
+        if imgSize is not None: x = skimage.transform.resize(x, imgSize)
+        if preprocess: x = preprocess_RGB_image(x)
+        if flatten: x = x.reshape((x.size,1,1))
+        if normalize:
+            l2_norm = sp.linalg.norm(x.flatten(),2)
+            x = x * 1.0/l2_norm * len(x)
+        xdat = caffe.io.array_to_datum(x) if lab is None \
+            else caffe.io.array_to_datum(x, label=lab)
+        db.Put('{:08}'.format(i), xdat.SerializeToString())
+    print "done"
+    del db
+    
 
+def read_from_leveldb(str_db, start=None, stop=None, float_data=True):
+    db = leveldb.LevelDB(str_db)
+    datum = caffe_pb2.Datum()
+    array = []
+    label = []
+    for i,(k,v) in enumerate(db.RangeIter()):
+        if start is not None and i<start:
+            continue
+        if stop is not None and i>=stop:
+            break
+        dt = datum.FromString(v)
+        if float_data:
+            array.append(dt.float_data)
+        else: 
+            array.append(np.fromstring(dt.data, dtype=np.uint8))
+        label.append(dt.label)
+    return np.asarray(array), np.asarray(label)
+
+    
 def read_binaryproto_file(filename):
 	blob = caffe.proto.caffe_pb2.BlobProto()
 	data = open(filename, 'rb').read()
@@ -244,19 +291,29 @@ def parse_prototxt_file(filename):
 	return _net
 
 
-def deprocess_RGB_image(image, imgMean=[123, 117, 104]):
-	''' 
-	Caffe performs some transformations to images for training.
-	This restores the original RGB image (e.g., for plotting).
-	'''
-	image = image.copy()              # don't modify destructively
-	image = image[::-1]               # BGR -> RGB
-	image = image.transpose(1, 2, 0)  # CHW -> HWC
-	image += imgMean		          # (approximately) undo mean subtraction
-	# clamp values in [0, 255]
-	image[image < 0], image[image > 255] = 0, 255
-	# round and cast from float32 to uint8
-	image = np.round(image)
-	image = np.require(image, dtype=np.uint8)
-	return image
+def preprocess_RGB_image(img):
+    mean_rgb = np.array([107.4072, 107.8797, 103.334]) # ImageNet means
+    out = img * 255.0/img.max() # normalize to 0...255
+    out = out[:, :, [2,1,0]] # swap channel from RGB to BGR
+    out -= mean_rgb
+    out = np.transpose(out, (2,0,1)) # return in format C x H x W
+    return out.astype(np.uint8)
+
+
+def deprocess_RGB_image(image):
+    ''' 
+    Caffe performs some transformations to images for training.
+    This restores the original RGB image (e.g., for plotting).
+    '''
+    imgMean = np.array([107, 108, 103], dtype=np.uint8) # [123, 117, 104]
+    image = image.copy()              # don't modify destructively
+    image = image[::-1]               # BGR -> RGB
+    image = image.transpose(1, 2, 0)  # CHW -> HWC
+    image += imgMean		          # (approximately) undo mean subtraction
+    # clamp values in [0, 255]
+    image[image < 0], image[image > 255] = 0, 255
+    # round and cast from float32 to uint8
+    image = np.round(image)
+    image = np.require(image, dtype=np.uint8)
+    return image
 
