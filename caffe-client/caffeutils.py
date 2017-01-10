@@ -236,13 +236,14 @@ def save_images_to_leveldb(sources, fname, flatten=True, imgSize=(500,500), prep
     for i,s in enumerate(sources):
         src,lab = s if len(s)>1 else (s[0],None)
         if i % step == 0: print "%d%%"%(i*10/step),
-        x = caffe.io.load_image(src) # x = skimage.io.imread(src).astype(np.uint8) # 
+        x = skimage.io.imread(src).astype(np.uint8) # 
         if imgSize is not None: x = skimage.transform.resize(x, imgSize)
         if preprocess: x = preprocess_RGB_image(x)
         if flatten: x = x.reshape((x.size,1,1))
         if normalize:
-            l2_norm = sp.linalg.norm(x.flatten(),2)
-            x = x * 1.0/l2_norm * len(x)
+            l2_norm = np.linalg.norm(x.flatten(),2)**2
+            if l2_norm>1.0e-6 and x.sum()==0:
+                x = x * 1.0/l2_norm * len(x.flatten())
         xdat = caffe.io.array_to_datum(x) if lab is None \
             else caffe.io.array_to_datum(x, label=lab)
         db.Put('{:08}'.format(i), xdat.SerializeToString())

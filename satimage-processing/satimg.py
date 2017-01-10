@@ -187,20 +187,21 @@ def get_geotiff_bounds(raster):
 
 
 def save_image_data(img, dumpPath, pickle=False):
-	basedir = os.path.dirname(dumpPath)
-	img = exposure.rescale_intensity(img, out_range='float')
-	img = skimage.img_as_uint(img)
-	if not os.path.exists(basedir):
-		os.makedirs(basedir)
-	if pickle:
-		with gzip.open(dumpPath+".pickle.gz", 'w'):
-			pickle.dump(img, dumpPath)
-	elif img.shape[0] in [3,4]:
-		io.imsave(dumpPath+".jpg", img.reshape(img.shape[::-1]))
-	elif img.shape[0] == 1:
-		io.imsave(dumpPath+".png", np.squeeze(img))
-	else:
-		io.imsave(dumpPath+".tif", img, compress=6)
+    basedir = os.path.dirname(dumpPath)
+    # img = exposure.rescale_intensity(img, out_range='float')
+    # img = skimage.img_as_uint(img)
+    img = img.astype(np.uint8)
+    if not os.path.exists(basedir):
+        os.makedirs(basedir)
+    if pickle:
+        with gzip.open(dumpPath+".pickle.gz", 'w'):
+            pickle.dump(img, dumpPath)
+    elif img.shape[0] in [3,4]:
+        io.imsave(dumpPath+".jpg", img.reshape(img.shape[::-1]))
+    elif img.shape[0] == 1:
+        io.imsave(dumpPath+".png", np.squeeze(img))
+    else:
+        io.imsave(dumpPath+".tif", img, compress=6)
 
 
 def km_to_deg_at_location(loc, sizeKm):
