@@ -3,6 +3,7 @@ import sys, os
 
 # for handling geometry and AOIs
 from shapely.geometry import Polygon, Point
+from pyproj import Proj, transform
 from shapely.wkt import dumps as wkt_dumps
 import geojson
 import math
@@ -14,6 +15,11 @@ import geocoder
 from osgeo import gdal, osr
 from gdal import gdalconst
 from gdalconst import * 
+import osr
+
+import rasterio
+from rasterio.features import shapes
+import geopandas as gp
 
 # for processing image data
 import skimage
@@ -50,8 +56,13 @@ class SatImage(object):
 			rasterFile = [rasterFile]
 		for rf in rasterFile:
 			data = gdal.Open(rf, GA_ReadOnly)	
+			if data is None:
+				continue
 			self._raster[get_geotiff_bounds(data)] = data
 
+
+	def polygonize_raster(self):
+		pass
 
 	def get_value_at_location(self, loc):
 		return self.get_image_at_location(loc)
@@ -78,7 +89,7 @@ class SatImage(object):
 		w = 0 if w is None else w
 		wLat, wLon = km_to_deg_at_location(loc, (w,w))
 		# note that all the GDAL-based code assumes locations are given as (lon,lat), so we must reverse loc
-		img = extract_centered_image_lonlat(img[0], loc[::-1], (wLat, wLon))
+		img = extract_centered_image_lonlat(img[0], loc[::-1], (wLon, wLat))
 
 		if dumpPath is not None:
 			dumpPath += "%2.6f_%2.6f_%dkm"%(loc[0], loc[1], w)
@@ -102,7 +113,7 @@ class SatImage(object):
 		""" 
 		Sample nSamples images of size w x w within a bounding box of W x W around location loc. Returns the list of sampled locations.
 		"""
-		locs = generate_locations_around_location(loc, W=W, nSamples=nSamples)
+		locs = generate_locations_around_latlon(loc, W=W, nSamples=nSamples)
 		return self.get_image_at_locations(locs, w=w, \
 			dumpPath=dumpPath, pickle=pickle)
 
@@ -115,6 +126,19 @@ class SatImage(object):
 		locs = generate_locations_within_polygon(polygon, nSamples=1)
 		return self.get_image_at_locations(locs, w=w, \
 			dumpPath=dumpPath, pickle=pickle)
+
+
+def raster2polygon(raster_file, band=1):
+	mask = None
+	with rasterio.drivers():
+	    with rasterio.open(raster_file) as src:
+	        image = src.read(band) # first band
+	        results = (
+	        	{'properties': {'raster_val': v}, 'geometry': s}
+	        		for i, (s, v) in enumerate(shapes(image, mask=mask, transform=src.affine)))
+	geoms = list(results)
+	gpd_polygonized_raster = gp.GeoDataFrame.from_features(geoms)
+	return gpd_polygonized_raster
 
 
 def generate_locations_around_latlon(latlon, W=None, nSamples=1):
@@ -140,7 +164,8 @@ def generate_locations_within_polygon(polygon, nSamples=1, seed=None, \
 	shape = polygon if strict else polygon.convex_hull
 	points = []
 	while len(points) < nSamples:
-		ps = generate_locations_within_bounding_box(bbox, nSamples=nSamples, seed=seed)
+		ps = generate_locations_within_bounding_box(bbox, \
+			nSamples=nSamples, seed=seed)
 		ps = [p for p in ps if Point(p).within(shape)]
 		points += ps
 	return points[:nSamples]
@@ -186,6 +211,67 @@ def get_geotiff_bounds(raster):
 	return latlongMin[1], latlongMin[0], latlongMax[1], latlongMax[0]
 
 
+def read_prj(prj_file):
+	'''
+	Read projection file into string.
+	'''
+	prj_text = open(prj_file, 'r').read()
+	srs = osr.SpatialReference()
+	if srs.ImportFromWkt(prj_text):
+	    raise ValueError("Error importing PRJ information from: %s" % prj_file)
+	prj = srs.ExportToProj4()
+	if prj == "":
+	    return '+proj=merc +lon_0=0 +lat_ts=0 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs '
+	else:
+	    return prj
+
+
+def xy2lonlat(xy, prj=""):
+	'''
+	Convert northing/easting coordinates to commonly-used lat/lon.
+	'''
+	x, y = xy
+	inProj = Proj(prj) 
+	outProj = Proj(init='epsg:4326')
+	lon, lat = transform(inProj,outProj,x,y) 
+	return lon, lat
+    
+
+def lonlat2xy(lonlat, prj=""):
+	'''
+	Convert commonly-used lat/lon to northing/easting coordinates.
+	'''
+	lon, lat = lonlat
+	inProj = Proj(init='epsg:4326')
+	outProj = Proj(prj) 
+	x, y = transform(inProj,outProj,lon,lat) 
+	return x, y
+    
+
+def polygon_xy2lonlat(p, prj=""):
+	'''
+	Convert polygon coordinates from meter to lon/lat.
+	'''
+	inProj = Proj(prj) 
+	outProj = Proj(init='epsg:4326')
+	x, y = p.exterior.coords.xy
+	locs_meter = zip(x, y)
+	locs_lonlat= [transform(inProj,outProj,x1,y1) for x1,y1 in locs_meter]
+	return Polygon(locs_lonlat)
+
+
+def polygon_lonlat2xy(p, prj=""):
+	'''
+	Convert polygon coordinates from lon/lat to meter.
+	'''
+	inProj = Proj(init='epsg:4326')
+	outProj = Proj(prj) 
+	lon, lat = p.exterior.coords.xy
+	locs_lonlat = zip(lon, lat)
+	locs_meter = [transform(inProj,outProj,x,y) for x,y in locs_lonlat]
+	return Polygon(locs_meter)
+
+
 def save_image_data(img, dumpPath, pickle=False):
     basedir = os.path.dirname(dumpPath)
     # img = exposure.rescale_intensity(img, out_range='float')
@@ -212,9 +298,9 @@ def km_to_deg_at_location(loc, sizeKm):
 # Bounding box surrounding the point at given coordinates,
 # assuming local approximation of Earth surface as a sphere
 # of radius given by WGS84
-def bounding_box_at_location(loc, sizeKm):
+def bounding_box_at_location(latlon, sizeKm):
 	widthKm, heightKm = sizeKm
-	latitudeInDegrees, longitudeInDegrees = loc
+	latitudeInDegrees, longitudeInDegrees = latlon
 	# degrees to radians
 	def deg2rad(degrees):
 	    return math.pi*degrees/180.0
@@ -274,8 +360,8 @@ def extract_centered_image_pix(raster, pixLoc, pixSize):
 def get_image_center_pix(pixLoc, pixSize):
     # Compute frame
     pixelWidth, pixelHeight = pixSize
-    pixelLeft = pixLoc[0] - pixelWidth / 2
-    pixelTop = pixLoc[1] - pixelHeight / 2
+    pixelLeft = max([0,pixLoc[0] - pixelWidth / 2])
+    pixelTop = max([0,pixLoc[1] - pixelHeight / 2])
     pixelRight = pixelLeft + pixelWidth
     pixelBottom = pixelTop + pixelHeight
     # Return
@@ -291,13 +377,16 @@ def extract_image_pix(raster, pixLoc, pixSize):
 	iHeight = int(pixHeight)
 	rWidth  = raster.RasterXSize
 	rHeight = raster.RasterYSize
-	iWidth  = min([abs(iLeft+iWidth-rWidth), iWidth])
-	iHeight = min([abs(iTop+iHeight-rHeight), iHeight])
+	iWidth  = iWidth if iLeft + iWidth <= rWidth \
+				else rWidth - iLeft
+	iHeight = iHeight if iTop + iHeight <= rHeight \
+				else rHeight - iTop
 	# Extract data
 	bands = map(raster.GetRasterBand, xrange(1, raster.RasterCount + 1))
 	img = [b.ReadAsArray(iLeft, iTop, iWidth, iHeight).astype(np.float) \
 		for b in bands]
-	return np.asarray(img)
+	img = np.asarray(img)
+	return img
 
 
 def convert_geoWindow_to_pixelWindow(geoWindow, gt):
