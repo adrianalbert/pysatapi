@@ -9,7 +9,7 @@ from requests.auth import HTTPBasicAuth
 
 # for handling geometry and AOIs
 from shapely.geometry import Polygon, Point
-from shapely.wkt import dumps as wkt_dumps
+import shapely
 import geojson
 
 import numpy as np
@@ -35,20 +35,20 @@ class PLClient(object):
 			self._key = key
 
 
-
-
-def loc_to_AOI(loc, w=None):
+def loc_to_AOI(lonlat, w=None):
 	'''
-	Define square AOI around (lat,lon) of interest with size w x w (in km).
+	Define square AOI around (lon, lat) of interest with size w x w (in km).
 	'''
-	wLat, wLon = satimg.km_to_deg_at_location(loc, (w,w))
-	nw = (loc[0] - wLat, loc[1] + wLon)
-	se = (loc[0] + wLat, loc[1] - wLon)
-	sw = (loc[0] - wLat, loc[1] - wLon)
-	ne = (loc[0] + wLat, loc[1] + wLon)
-	poly = Polygon([nw, ne, se, sw, nw])
-	locPolygon = wkt_dumps(poly)
-	return locPolygon
+	wLat, wLon = satimg.km_to_deg_at_location(lonlat[::-1], (w,w))
+	nw = (lonlat[0] - wLon, lonlat[1] + wLat)
+	se = (lonlat[0] + wLon, lonlat[1] - wLat)
+	sw = (lonlat[0] - wLon, lonlat[1] - wLat)
+	ne = (lonlat[0] + wLon, lonlat[1] + wLat)
+	p = Polygon([nw, ne, se, sw, nw])
+	g = geojson.Feature(geometry=p, properties={})
+
+	return g.geometry
+
 
 
 # def extract_scene_attributes(scene, attribute=None):
