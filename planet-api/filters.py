@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from dateutil import parser
 
 import requests
 from requests.auth import HTTPBasicAuth
@@ -33,7 +34,7 @@ def search_assets(filters, key, request_type="stats", item_types=None):
       auth=HTTPBasicAuth(key, ''),
       json=endpoint_request)
 
-  return result.json()    
+  return result.json()
 
 
 def search_assets_by_page(filters, key, page_size=10, limit=None):
@@ -105,11 +106,16 @@ def geometry_filter(aoi):
 # filter images acquired in a certain date range
 def date_range_filter(gte=None, lte=None, field_name="acquired"):
   if lte is None:
-    lte = datetime.now().isoformat().split(".")[0] + ".000Z"
-
+    lte = datetime.now()
+  elif type(lte)==str:
+    lte = parser.parse(lte)
+  lte = lte.isoformat().split(".")[0] + ".000Z"
   config = {'lte':lte}
+
   if gte is not None:
-    gte = gte.isoformat() if type(gte)==datetime.datetime else gte
+    if type(gte)==str:
+      gte = parser.parse(gte)
+    gte = gte.isoformat().split(".")[0] + ".000Z"
     config['gte'] = gte
   
   return {

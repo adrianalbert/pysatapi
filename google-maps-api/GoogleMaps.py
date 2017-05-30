@@ -43,6 +43,7 @@ class GoogleMaps(object):
                 time.sleep(5)                
         return None
 
+
 def construct_googlemaps_url_request(center=None, zoom=None, imgsize=(500,500),
                                      maptype="roadmap", apiKey="", imgformat="jpeg"):
     request =  "http://maps.google.com/maps/api/staticmap?" # base URL, append query params, separated by &
