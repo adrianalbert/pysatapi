@@ -1,4 +1,8 @@
-# satellite-image-tools
-Tools for acquiring and processing satellite imagery
+# satapi
 
-This repository contains API wrappers and example Jupyter notebooks for acquiring satellite imagery from several providers and for processing this data into formats common to machine learning algorithms.
+This repository contains API wrappers and example Jupyter notebooks for acquiring satellite imagery from several providers. The emphasis is on acquiring data for analysis and experimentation, and for training machine learning algorithms.
+
+Currently, the commercial satellite data providers supported are:
+
+* Google Maps
+* Planet Labs
