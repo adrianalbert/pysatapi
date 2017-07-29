@@ -134,7 +134,7 @@ def download_image(url, key, downloadPath=""):
 	    localFilename = '.'.join(url.split('/')[-2:])
 	    for c in ["?", ".", "=", "product"]:
 	    	localFilename = localFilename.replace(c,"_")
-	localFilename = downloadPath + "/" + localFilename  
+	localFilename = downloadPath + localFilename  
 	with open(localFilename, 'wb') as f:
 	    for chunk in r.iter_content(chunk_size=1024):
 	        if chunk: # filter out keep-alive new chunks
