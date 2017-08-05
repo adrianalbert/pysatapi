@@ -18,7 +18,7 @@ class GoogleMaps(object):
 
     def construct_static_url(self, latlon, zoom=17, imgsize=(500,500),
                             maptype="roadmap", imgformat="jpeg"):
-        center = "%2.5f,%2.5f"%latlon
+        center = "%2.5f,%2.5f"%latlon if type(latlon)==tuple else latlon
         return construct_googlemaps_url_request(
             center=center,
             zoom=zoom,
@@ -33,13 +33,13 @@ class GoogleMaps(object):
         numTries = 0
         while numTries < max_tries:
             numTries += 1
-            try:
-                img = get_static_google_map(request, \
-                    filename=filename, crop=crop)
-                if img is not None:
-                    return img
-            except:
-                print "Error! Trying again (%d/%d) in 5 sec"%(numTries, max_tries)
+        # try:
+            img = get_static_google_map(request, \
+                filename=filename, crop=crop)
+            if img is not None:
+                return img
+        # except:
+            #     print "Error! Trying again (%d/%d) in 5 sec"%(numTries, max_tries)
                 time.sleep(5)                
         return None
 
@@ -86,7 +86,7 @@ def get_static_google_map(request, filename=None, crop=False):
     
     if filename is not None:
         basedir = os.path.dirname(filename)
-        if not os.path.exists(basedir):
+        if not os.path.exists(basedir) and basedir not in ["","./"]:
             os.makedirs(basedir)
         io.imsave(filename, img)
     return img 
