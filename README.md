@@ -4,7 +4,7 @@ This package contains functionality to download satellite imagery from common pr
 
 Currently, the commercial satellite data providers supported are:
 
-* [Google Maps Static API](https://developers.google.com/maps/documentation/static-maps/). Example usage can be found in [this notebook](./examples/Google&nbspMaps&nbspStatic&nbspAPI&nbspExample.ipynb)
+* [Google Maps Static API](https://developers.google.com/maps/documentation/static-maps/). Example usage can be found in [this notebook](./examples/Google Maps Static API Example.ipynb)
 * [Planet Labs](https://www.planet.com/docs/reference/). Example usage can be found in [this notebook](./examples/Test&nbspcustom&nbspPlanet&nbspLabs&nbspAPI&nbspclient.ipynb)
 
 ## Installation
