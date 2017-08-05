@@ -1,4 +1,4 @@
-# satapi
+# pysatapi
 
 This package contains functionality to download satellite imagery from common providers that make their data available (either commercially or for free) via online APIs. The emphasis is on acquiring data for analysis and experimentation, and for training machine learning algorithms.
 
