@@ -18,7 +18,7 @@ Alternatively, you can obtain the latest `master` branch on GitHub and install m
 ```bash
 git clone https://github.com/adrianalbert/satapi.git
 cd satapi/
-python setup.py 
+python setup.py install
 ```
 
 
