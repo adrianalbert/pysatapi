@@ -69,7 +69,7 @@ def get_static_google_map(request, filename=None, crop=False):
     try:
         img = Image.open(cStringIO.StringIO(response.content))
     except IOError:
-        print "IOError:", imgdata.read() # print error (or it may return a image showing the error"
+        print "IOError:" # print error (or it may return a image showing the error"
         return None
     else:
         img = np.asarray(img.convert("RGB"))
